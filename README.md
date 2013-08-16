@@ -8,13 +8,13 @@ I intend to synchronize to a dropbox folder to allow offline editing on mobile d
 At the moment synchro is possible only one way: server to local folder.
 The authentication is mandatory.
 
-Here is a sample comfig file
+Here is a sample config file
 
 ```
 [server.test.org]
 url = http://server.test.org/wiki/bags/common
 authentication = true
-user = gnibu
+user = me
 localfolder = ~/tiddlers
 passwordfile = ~/.mypassfile
 
