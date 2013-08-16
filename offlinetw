@@ -1,0 +1,107 @@
+#!/usr/bin/env python2.7
+
+# -*- coding: utf8 -*-
+
+import os
+import re
+import time
+import ConfigParser
+import requests, json
+
+#TODO separate config file and metadata file
+#TODO delete local tiddler deleted from server
+#TODO sync changed local tiddlers to server
+
+def mod():
+     """Find files modified today, given a file path."""
+     latest = 0
+     now = int(time.strftime('%Y-%m-%d', time.localtime()))
+     dir = os.getenv("HOME")+"/Dropbox/Notes/Mind"
+     for fname in os.listdir(dir):
+         if fname.endswith(''):
+             modtime = os.stat(os.path.join(dir, fname)).st_mtime
+             if modtime > latest:
+                 latest = modtime
+                 out = time.strftime('%Y-%m-%d', time.localtime(latest))
+                 if out == now:
+                     print fname, "has changed today. "
+                 else:
+                     pass
+
+def encodeURL(url,name):
+     """Return the URL of the tiddle having the given name"""
+     return url+"/tiddlers/"+re.sub(r'( )', r'%20', name)+".txt"
+
+
+def sync(repo):
+     now = int(time.strftime('%Y%m%d%M%S', time.localtime()))
+     url = config.get(repo, 'url')
+     localFolder = re.sub(r'(~)',os.getenv("HOME"),config.get(repo,"localFolder"))
+     #localFolder = config.get(repo,"localFolder")
+     lastModification = 0
+     authentication = config.getboolean(repo,"authentication")
+     user = ""
+     password = ""
+
+     print "===== Syncing "+repo+" to "+localFolder 
+
+     if not os.path.exists(localFolder):
+          print "mkdir "+localFolder
+          os.makedirs(localFolder)
+          
+     os.chdir(localFolder)
+   
+     if authentication:
+          user = config.get(repo,"user")
+          passwordFile = re.sub(r'(~)',os.getenv("HOME"),config.get(repo,"passwordFile"))
+          f = open(passwordFile,"r")
+          password = f.read().strip()
+          f.close()
+
+     try:
+          lastModification = config.getint(repo, 'lastModification')
+     except:
+          lastModification = 0
+
+     print "lastest tiddler modification date = ", lastModification
+
+          #data = json.dumps({'name':'test', 'description':'some test repo'})
+          #r = requests.post(bag_url, data, auth=('user', '*****'))
+
+     r = requests.get(url+"/tiddlers.json?select=modified:>"+str(lastModification),auth=(user,password))
+     tiddlers = json.loads(r.content)
+
+     print len(tiddlers)," tiddlers to download"
+
+     for tiddler in tiddlers:
+          title = tiddler["title"]
+          print "Downloading "+title
+          tiddlerURL = encodeURL(url,title)
+          r = requests.get(tiddlerURL,auth=(user,password))
+          f = open(title+".txt", 'w')
+          f.write(r.text.encode('utf8'))
+          f.close()
+          if tiddler["modified"] > lastModification:
+               lastModification = tiddler["modified"]
+
+     config.set(repo, 'lastModification', lastModification)
+     # Writing our configuration file to 'synctiddler.cfg'
+     with open(config_file, 'wb') as configfile:
+          config.write(configfile)
+
+
+
+config_file = os.getenv("HOME")+'/.synctiddlers.rc'
+config = ConfigParser.ConfigParser()
+try:
+     config.read(config_file)
+     repositories = config.get("general","repositories").split(",")
+except:
+     print "Config file "+config_file+" not found or invalid. Please use the sanple config file."
+     exit(1) #TODO backtrace
+
+for repo in repositories:
+     sync(repo)
+
+
+
