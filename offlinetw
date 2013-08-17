@@ -46,33 +46,50 @@ def getTiddlers(repo):
     for tiddler in tiddlers:
         title = tiddler["title"]
         print "Downloading "+title
-        tiddlerURL = encodeURL(url, title)+".txt"
+        tiddlerURL = encodeURL(url, title)+".json"
         r = requests.get(tiddlerURL, auth=(user, password))
+        content = json.loads(r.content)
         f = open(title+".txt", 'w')
-        f.write(r.text.encode('utf8'))
+        f.write(content["text"].encode('utf8'))
         f.close()
+        tiddler["sha1"] = hashlib.sha1(content["text"]
+                                 .encode('utf8')).hexdigest()
+        # get the date of the lastest tiddler
         if tiddler["modified"] > lastModification:
             lastModification = tiddler["modified"]
             config.set(repo, 'lastModification', lastModification)
-     # Writing our configuration file to 'synctiddler.cfg'
+        f = open(repoMetadataFolder + "/" + title, 'w')
+        f.write(json.dumps(tiddler))
+        f.close
+    # Writing our configuration file
     with open(config_file, 'wb') as configfile:
         config.write(configfile)
 
 
+def testMkdirFolder(dir):
+    if not os.path.exists(dir):
+        print "mkdir " + dir
+        os.makedirs(dir)
+
+
 def putTiddlers(repo):
-    print "pipo"
     title = "test"
     headers = {'content-type': 'application/json'}
     f = open(title+".txt")
     filecontent = f.read()
-    data = json.dumps({'text': filecontent})
-    print "Uploading " + encodeURL(url, title)
-    r = requests.put(encodeURL(url, title), data,
-                     auth=(user, password), headers=headers)
-    print r.text
     f.close()
+    f = open(repoMetadataFolder + "/" + title, "r")
+    metadata = json.loads(f.read())
+    print "Current file sha1 = " + hashlib.sha1(filecontent).hexdigest()
+    print "Previous file sha1 = " + metadata["sha1"]
+    if hashlib.sha1(filecontent).hexdigest() != metadata["sha1"]:
+        data = json.dumps({'text': filecontent})
+        print "Uploading " + encodeURL(url, title)
+        r = requests.put(encodeURL(url, title), data,
+                         auth=(user, password), headers=headers)
+        print r.text
 
-config_file = os.getenv("HOME")+'/.synctiddlers.rc'
+config_file = os.getenv("HOME")+'/.offlinetw.rc'
 config = ConfigParser.ConfigParser()
 try:
     config.read(config_file)
@@ -81,6 +98,11 @@ except:
     print "Config file " + config_file + \
           " not found or invalid. Please use the sanple config file."
     exit(1)  # TODO backtrace
+
+metadataFolder = re.sub(r'(~)', os.getenv("HOME"),
+                        config.get("general", "metadataFolder"))
+
+testMkdirFolder(metadataFolder)
 
 for repo in repositories:
     now = int(time.strftime('%Y%m%d%M%S', time.localtime()))
@@ -92,12 +114,12 @@ for repo in repositories:
     authentication = config.getboolean(repo, "authentication")
     user = ""
     password = ""
+    repoMetadataFolder = metadataFolder + "/" + repo
 
     print "===== Syncing " + repo + " to " + localFolder
 
-    if not os.path.exists(localFolder):
-        print "mkdir "+localFolder
-        os.makedirs(localFolder)
+    testMkdirFolder(localFolder)
+    testMkdirFolder(repoMetadataFolder)
 
     os.chdir(localFolder)
 
@@ -108,5 +130,5 @@ for repo in repositories:
         f = open(passwordFile, "r")
         password = f.read().strip()
         f.close()
+    putTiddlers(repo)
     getTiddlers(repo)
-    #putTiddlers(repo)
