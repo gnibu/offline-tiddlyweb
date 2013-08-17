@@ -8,21 +8,16 @@ import time
 import ConfigParser
 import requests
 import json
+import hashlib
 
 
-def mod():
-    """Find files modified today, given a file path."""
-    latest = 0
-    now = int(time.strftime('%Y-%m-%d', time.localtime()))
-    dir = os.getenv("HOME")+"/Dropbox/Notes/Mind"
+def modifiedFiles(dir, date):
+    """Find files modified after the given date in the given dir."""
     for fname in os.listdir(dir):
         if fname.endswith(''):
             modtime = os.stat(os.path.join(dir, fname)).st_mtime
-        if modtime > latest:
-            latest = modtime
-            out = time.strftime('%Y-%m-%d', time.localtime(latest))
-        if out == now:
-            print fname, "has changed today. "
+        if modtime > date:
+            print fname, "has changed."
         else:
             pass
 
