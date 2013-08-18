@@ -15,9 +15,14 @@ def modifiedFiles(dir, date):
     """Find files modified after the given date in the given dir."""
     for fname in os.listdir(dir):
         if fname.endswith(''):
-            modtime = os.stat(os.path.join(dir, fname)).st_mtime
+            modtime = int(time.strftime('%Y%m%d%H%M%S',
+                                        time.localtime
+                                        (
+                                            os.stat(os.path.join(dir, fname))
+                                            .st_mtime
+                                        )))
         if modtime > date:
-            print fname, "has changed."
+            print fname, "has changed.", modtime, " > ", date
         else:
             pass
 
@@ -62,8 +67,6 @@ def getTiddlers(repo):
         f.write(json.dumps(tiddler))
         f.close
     # Writing our configuration file
-    with open(config_file, 'wb') as configfile:
-        config.write(configfile)
 
 
 def testMkdirFolder(dir):
@@ -73,6 +76,11 @@ def testMkdirFolder(dir):
 
 
 def putTiddlers(repo):
+    try:
+        lastRun = config.getint("general", "lastRun")
+    except:
+        lastRun = 0
+    modifiedFiles(localFolder, lastRun)
     title = "test"
     headers = {'content-type': 'application/json'}
     f = open(title+".txt")
@@ -89,7 +97,7 @@ def putTiddlers(repo):
                          auth=(user, password), headers=headers)
         print r.text
 
-config_file = os.getenv("HOME")+'/.offlinetw.rc'
+config_file = os.path.join(os.getenv("HOME"), '.offlinetw.rc')
 config = ConfigParser.ConfigParser()
 try:
     config.read(config_file)
@@ -104,8 +112,9 @@ metadataFolder = re.sub(r'(~)', os.getenv("HOME"),
 
 testMkdirFolder(metadataFolder)
 
+now = int(time.strftime('%Y%m%d%H%M%S', time.localtime()))
+
 for repo in repositories:
-    now = int(time.strftime('%Y%m%d%M%S', time.localtime()))
     url = config.get(repo, 'url')
     localFolder = re.sub(r'(~)', os.getenv("HOME"),
                          config.get(repo, "localFolder"))
@@ -114,7 +123,7 @@ for repo in repositories:
     authentication = config.getboolean(repo, "authentication")
     user = ""
     password = ""
-    repoMetadataFolder = metadataFolder + "/" + repo
+    repoMetadataFolder = os.path.join(metadataFolder, repo)
 
     print "===== Syncing " + repo + " to " + localFolder
 
@@ -132,3 +141,8 @@ for repo in repositories:
         f.close()
     putTiddlers(repo)
     getTiddlers(repo)
+
+config.set("general", "lastRun", now)
+
+with open(config_file, 'wb') as configfile:
+    config.write(configfile)
