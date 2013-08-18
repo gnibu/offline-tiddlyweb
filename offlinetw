@@ -34,6 +34,17 @@ def encodeURL(url, name):
     return url+"/tiddlers/"+re.sub(r'( )', r'%20', name)
 
 
+class otwRepository:
+
+    def __init__(self, config, name):
+        print "Constructor"
+        self.config = config
+        self.name = name
+
+    def getName(self):
+        return self.name
+
+
 def getTiddlers(repo):
 
     try:
@@ -48,7 +59,7 @@ def getTiddlers(repo):
                      auth=(user, password))
     tiddlers = json.loads(r.content)
 
-    print len(tiddlers), " tiddlers to download"
+    print len(tiddlers), " tiddler(s) to download"
 
     for tiddler in tiddlers:
         title = tiddler["title"]
@@ -92,15 +103,19 @@ def putTiddlers(repo):
 
     for file in updatedFiles:
         title = re.sub(r'(.txt$)', '', file)
-        f = open(os.path.join(repoMetadataFolder, title), "r")
-        tiddler = json.loads(f.read())
-        f.close()
+        try:
+            f = open(os.path.join(repoMetadataFolder, title), "r")
+            tiddler = json.loads(f.read())
+            f.close()
+        except:
+            print "SKIP ", title, ": can't read metadata"
+            pass
         f = open(title+".txt")
         filecontent = f.read()
         f.close()
         # Upload only only if the actual content of the file has changed
         if hashlib.sha1(filecontent).hexdigest() != tiddler["sha1"]:
-            if title == "test":
+            if not testMode or (title == "test"):
                 tiddler['text'] = filecontent
                 updatedTiddlers.append(tiddler)
 
@@ -125,15 +140,18 @@ except:
           " not found or invalid. Please use the sanple config file."
     exit(1)  # TODO backtrace
 
-metadataFolder = re.sub(r'(~)', os.getenv("HOME"),
-                        config.get("general", "metadataFolder"))
+metadataFolder = re.sub(r'(~)', os.getenv('HOME'),
+                        config.get('general', 'metadataFolder'))
 
 createFolder(metadataFolder)
 
 now = int(time.strftime('%Y%m%d%H%M%S', time.localtime()))
 
 for repo in repositories:
+    repos = otwRepository(config, repo)
+    print repos.getName()
     url = config.get(repo, 'url')
+    testMode = config.get(repo, 'testMode')
     localFolder = re.sub(r'(~)', os.getenv("HOME"),
                          config.get(repo, "localFolder"))
     #localFolder = config.get(repo,"localFolder")
