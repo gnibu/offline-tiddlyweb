@@ -67,7 +67,11 @@ def getTiddlers(repo):
         print "Downloading "+title
         tiddlerURL = encodeURL(url, title)+".json"
         r = requests.get(tiddlerURL, auth=(user, password))
-        content = json.loads(r.content)
+        try:
+            content = json.loads(r.content)
+        except:
+            print r.content
+            exit(1)
         f = open(title+".txt", 'w')
         f.write(content["text"].encode('utf8'))
         f.close()
@@ -96,6 +100,9 @@ def putTiddlers(repo):
     except:
         lastRun = 0
 
+    if not fastMode:
+        lastRun = 0
+
     updatedFiles = modifiedFiles(localFolder, lastRun)
     updatedTiddlers = []
     headers = {'content-type': 'application/json'}
@@ -104,19 +111,20 @@ def putTiddlers(repo):
 
     for file in updatedFiles:
         title = re.sub(r'(.txt$)', '', file)
+        tiddler = None
         try:
             f = open(os.path.join(repoMetadataFolder, title), "r")
             tiddler = json.loads(f.read())
             f.close()
         except:
             print "SKIP ", title, ": can't read metadata"
-            pass
+            continue
         f = open(title+".txt")
         filecontent = f.read()
         f.close()
         # Upload only only if the actual content of the file has changed
         if hashlib.sha1(filecontent).hexdigest() != tiddler["sha1"]:
-            if not testMode or (title == "test"):
+            if not testMode or (title == "test") or (title == "test2"):
                 tiddler['text'] = filecontent
                 updatedTiddlers.append(tiddler)
 
@@ -129,7 +137,7 @@ def putTiddlers(repo):
         print "Uploading " + encodeURL(url, title)
         r = requests.put(encodeURL(url, title), data,
                          auth=(user, password), headers=headers)
-        print r.text
+        print r.content
 
 config_file = os.path.join(os.getenv("HOME"), '.offlinetw.rc')
 config = ConfigParser.ConfigParser()
@@ -146,6 +154,10 @@ metadataFolder = re.sub(r'(~)', os.getenv('HOME'),
 
 createFolder(metadataFolder)
 
+# default to non fast mode because my iphone dropbox client doesn't change
+# the timestamps
+fastMode = False
+
 now = int(time.strftime('%Y%m%d%H%M%S', time.localtime()))
 
 for repo in repositories:
@@ -155,7 +167,6 @@ for repo in repositories:
     testMode = config.get(repo, 'testMode')
     localFolder = re.sub(r'(~)', os.getenv("HOME"),
                          config.get(repo, "localFolder"))
-    #localFolder = config.get(repo,"localFolder")
     lastModification = 0
     authentication = config.getboolean(repo, "authentication")
     user = ""
