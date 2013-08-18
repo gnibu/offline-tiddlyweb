@@ -13,6 +13,7 @@ import hashlib
 
 def modifiedFiles(dir, date):
     """Find files modified after the given date in the given dir."""
+    changedFiles = []
     for fname in os.listdir(dir):
         if fname.endswith(''):
             modtime = int(time.strftime('%Y%m%d%H%M%S',
@@ -21,10 +22,11 @@ def modifiedFiles(dir, date):
                                             os.stat(os.path.join(dir, fname))
                                             .st_mtime
                                         )))
-        if modtime > date:
-            print fname, "has changed.", modtime, " > ", date
+            if modtime > date:
+                changedFiles.append(fname)
         else:
             pass
+    return changedFiles
 
 
 def encodeURL(url, name):
@@ -63,13 +65,14 @@ def getTiddlers(repo):
         if tiddler["modified"] > lastModification:
             lastModification = tiddler["modified"]
             config.set(repo, 'lastModification', lastModification)
-        f = open(repoMetadataFolder + "/" + title, 'w')
+        f = open(os.path.join(repoMetadataFolder, title), 'w')
         f.write(json.dumps(tiddler))
         f.close
     # Writing our configuration file
 
 
-def testMkdirFolder(dir):
+def createFolder(dir):
+    """Creates a folder if it doesn't exist"""
     if not os.path.exists(dir):
         print "mkdir " + dir
         os.makedirs(dir)
@@ -80,18 +83,33 @@ def putTiddlers(repo):
         lastRun = config.getint("general", "lastRun")
     except:
         lastRun = 0
-    modifiedFiles(localFolder, lastRun)
-    title = "test"
+
+    updatedFiles = modifiedFiles(localFolder, lastRun)
+    updatedTiddlers = []
     headers = {'content-type': 'application/json'}
-    f = open(title+".txt")
-    filecontent = f.read()
-    f.close()
-    f = open(repoMetadataFolder + "/" + title, "r")
-    metadata = json.loads(f.read())
-    print "Current file sha1 = " + hashlib.sha1(filecontent).hexdigest()
-    print "Previous file sha1 = " + metadata["sha1"]
-    if hashlib.sha1(filecontent).hexdigest() != metadata["sha1"]:
-        data = json.dumps({'text': filecontent})
+
+    print len(updatedFiles), " file(s) have been modified on disk"
+
+    for file in updatedFiles:
+        title = re.sub(r'(.txt$)', '', file)
+        f = open(os.path.join(repoMetadataFolder, title), "r")
+        tiddler = json.loads(f.read())
+        f.close()
+        f = open(title+".txt")
+        filecontent = f.read()
+        f.close()
+        # Upload only only if the actual content of the file has changed
+        if hashlib.sha1(filecontent).hexdigest() != tiddler["sha1"]:
+            if title == "test":
+                tiddler['text'] = filecontent
+                updatedTiddlers.append(tiddler)
+
+    print len(updatedTiddlers), " tiddler(s) have real changes on disk"
+
+    for tiddle in updatedTiddlers:
+        title = tiddle["title"]
+        data = json.dumps({'text': tiddle['text'],
+                           'tags': tiddle['tags']})
         print "Uploading " + encodeURL(url, title)
         r = requests.put(encodeURL(url, title), data,
                          auth=(user, password), headers=headers)
@@ -110,7 +128,7 @@ except:
 metadataFolder = re.sub(r'(~)', os.getenv("HOME"),
                         config.get("general", "metadataFolder"))
 
-testMkdirFolder(metadataFolder)
+createFolder(metadataFolder)
 
 now = int(time.strftime('%Y%m%d%H%M%S', time.localtime()))
 
@@ -127,8 +145,8 @@ for repo in repositories:
 
     print "===== Syncing " + repo + " to " + localFolder
 
-    testMkdirFolder(localFolder)
-    testMkdirFolder(repoMetadataFolder)
+    createFolder(localFolder)
+    createFolder(repoMetadataFolder)
 
     os.chdir(localFolder)
 
