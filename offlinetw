@@ -9,6 +9,7 @@ import ConfigParser
 import requests
 import json
 import hashlib
+import urllib
 
 
 def modifiedFiles(dir, date):
@@ -31,7 +32,7 @@ def modifiedFiles(dir, date):
 
 def encodeURL(url, name):
     """Return the URL of the tiddle having the given name"""
-    return url+"/tiddlers/"+re.sub(r'( )', r'%20', name)
+    return url+"/tiddlers/"+urllib.quote(name)
 
 
 class otwRepository:
