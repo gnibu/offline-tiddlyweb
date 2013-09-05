@@ -11,6 +11,10 @@ import json
 import hashlib
 import urllib
 
+###################
+# Utility functions
+###################
+
 
 def modifiedFiles(dir, date):
     """Find files modified after the given date in the given dir."""
@@ -35,58 +39,6 @@ def encodeURL(url, name):
     return url+"/tiddlers/"+urllib.quote(name)
 
 
-class otwRepository:
-
-    def __init__(self, config, name):
-        print "Constructor"
-        self.config = config
-        self.name = name
-
-    def getName(self):
-        return self.name
-
-
-def getTiddlers(repo):
-
-    try:
-        lastModification = config.getint(repo, 'lastModification')
-    except:
-        lastModification = 0
-
-    print "lastest tiddler modification date = ", lastModification
-
-    r = requests.get(url + "/tiddlers.json?select=modified:>"
-                     + str(lastModification),
-                     auth=(user, password))
-    tiddlers = json.loads(r.content)
-
-    print len(tiddlers), " tiddler(s) to download"
-
-    for tiddler in tiddlers:
-        title = tiddler["title"]
-        print "Downloading "+title
-        tiddlerURL = encodeURL(url, title)+".json"
-        r = requests.get(tiddlerURL, auth=(user, password))
-        try:
-            content = json.loads(r.content)
-        except:
-            print r.content
-            exit(1)
-        f = open(title+".txt", 'w')
-        f.write(content["text"].encode('utf8'))
-        f.close()
-        tiddler["sha1"] = hashlib.sha1(content["text"]
-                                 .encode('utf8')).hexdigest()
-        # get the date of the lastest tiddler
-        if tiddler["modified"] > lastModification:
-            lastModification = tiddler["modified"]
-            config.set(repo, 'lastModification', lastModification)
-        f = open(os.path.join(repoMetadataFolder, title), 'w')
-        f.write(json.dumps(tiddler))
-        f.close
-    # Writing our configuration file
-
-
 def createFolder(dir):
     """Creates a folder if it doesn't exist"""
     if not os.path.exists(dir):
@@ -94,50 +46,102 @@ def createFolder(dir):
         os.makedirs(dir)
 
 
-def putTiddlers(repo):
-    try:
-        lastRun = config.getint("general", "lastRun")
-    except:
-        lastRun = 0
+class otwRepository:
+    """Class to access a distant tiddlywiki repository and synchronize
+    single or multiple tiddlers both ways"""
 
-    if not fastMode:
-        lastRun = 0
-
-    updatedFiles = modifiedFiles(localFolder, lastRun)
-    updatedTiddlers = []
-    headers = {'content-type': 'application/json'}
-
-    print len(updatedFiles), " file(s) have been modified on disk"
-
-    for file in updatedFiles:
-        title = re.sub(r'(.txt$)', '', file)
-        tiddler = None
+    def __init__(self, config, name):
+        self.config = config
+        self.name = name
         try:
-            f = open(os.path.join(repoMetadataFolder, title), "r")
-            tiddler = json.loads(f.read())
-            f.close()
+            self.lastModification = config.getint(self.name,
+                                                  'lastModification')
         except:
-            print "SKIP ", title, ": can't read metadata"
-            continue
-        f = open(title+".txt")
-        filecontent = f.read()
+            self.lastModification = 0
+        self.localFolder = re.sub(r'(~)', os.getenv("HOME"),
+                                  config.get(self.name, "localFolder"))
+        self.repoMetadataFolder = os.path.join(metadataFolder, self.name)
+        createFolder(self.localFolder)
+        createFolder(self.repoMetadataFolder)
+        os.chdir(self.localFolder)
+        print "===== Syncing " + self.name + " to " + self.localFolder
+
+    def getName(self):
+        return self.name
+
+    def getTiddlerByName(self, title):
+        print "Downloading "+title
+        tiddlerURL = encodeURL(url, title)+".json"
+        r = requests.get(tiddlerURL, auth=(user, password))
+        try:
+            tiddler = json.loads(r.content)
+        except:
+            print r.content
+            exit(1)
+        f = open(title+".txt", 'w')
+        f.write(tiddler["text"].encode('utf8'))
         f.close()
-        # Upload only only if the actual content of the file has changed
-        if hashlib.sha1(filecontent).hexdigest() != tiddler["sha1"]:
-            if not testMode or (title == "test") or (title == "test2"):
-                tiddler['text'] = filecontent
-                updatedTiddlers.append(tiddler)
+        tiddler["sha1"] = hashlib.sha1(tiddler["text"]
+                                       .encode('utf8')).hexdigest()
+        # get the date of the lastest tiddler
+        if tiddler["modified"] > self.lastModification:
+            self.lastModification = tiddler["modified"]
+            config.set(repo, 'lastModification', self.lastModification)
+            f = open(os.path.join(self.repoMetadataFolder, title), 'w')
+            f.write(json.dumps(tiddler))
+            f.close
+        # Writing our configuration file
 
-    print len(updatedTiddlers), " tiddler(s) have real changes on disk"
+    def getTiddlers(self):
+        print "lastest tiddler modification date = ", self.lastModification
+        r = requests.get(url + "/tiddlers.json?select=modified:>"
+                         + str(self.lastModification),
+                         auth=(user, password))
+        tiddlers = json.loads(r.content)
+        print len(tiddlers), " tiddler(s) to download"
+        for tiddler in tiddlers:
+            title = tiddler["title"]
+            self.getTiddlerByName(title)
 
-    for tiddle in updatedTiddlers:
-        title = tiddle["title"]
-        data = json.dumps({'text': tiddle['text'],
-                           'tags': tiddle['tags']})
-        print "Uploading " + encodeURL(url, title)
-        r = requests.put(encodeURL(url, title), data,
-                         auth=(user, password), headers=headers)
-        print r.content
+    def putTiddlers(self):
+        try:
+            lastRun = config.getint("general", "lastRun")
+        except:
+            lastRun = 0
+
+        if not fastMode:
+            lastRun = 0
+        updatedFiles = modifiedFiles(self.localFolder, lastRun)
+        updatedTiddlers = []
+        headers = {'content-type': 'application/json'}
+        print len(updatedFiles), " file(s) have been modified on disk"
+        for file in updatedFiles:
+            title = re.sub(r'(.txt$)', '', file)
+            tiddler = None
+            try:
+                f = open(os.path.join(self.repoMetadataFolder, title), "r")
+                tiddler = json.loads(f.read())
+                f.close()
+            except:
+                print "SKIP ", title, ": can't read metadata"
+                continue
+            f = open(title+".txt")
+            filecontent = f.read()
+            f.close()
+            # Upload only only if the actual content of the file has changed
+            if hashlib.sha1(filecontent).hexdigest() != tiddler["sha1"]:
+                if not testMode or (title == "test") or (title == "test2"):
+                    tiddler['text'] = filecontent
+                    updatedTiddlers.append(tiddler)
+        print len(updatedTiddlers), " tiddler(s) have real changes on disk"
+        for tiddle in updatedTiddlers:
+            title = tiddle["title"]
+            data = json.dumps({'text': tiddle['text'],
+                               'tags': tiddle['tags']})
+            print "Uploading " + encodeURL(url, title)
+            r = requests.put(encodeURL(url, title), data,
+                             auth=(user, password), headers=headers)
+            print r.content
 
 config_file = os.path.join(os.getenv("HOME"), '.offlinetw.rc')
 config = ConfigParser.ConfigParser()
@@ -160,25 +164,14 @@ fastMode = False
 
 now = int(time.strftime('%Y%m%d%H%M%S', time.localtime()))
 
-for repo in repositories:
-    repos = otwRepository(config, repo)
-    print repos.getName()
+for repoName in repositories:
+    repo = otwRepository(config, repoName)
     url = config.get(repo, 'url')
     testMode = config.get(repo, 'testMode')
-    localFolder = re.sub(r'(~)', os.getenv("HOME"),
-                         config.get(repo, "localFolder"))
-    lastModification = 0
-    authentication = config.getboolean(repo, "authentication")
+
+    authentication = config.getboolean(repo.getName(), "authentication")
     user = ""
     password = ""
-    repoMetadataFolder = os.path.join(metadataFolder, repo)
-
-    print "===== Syncing " + repo + " to " + localFolder
-
-    createFolder(localFolder)
-    createFolder(repoMetadataFolder)
-
-    os.chdir(localFolder)
 
     if authentication:
         user = config.get(repo, "user")
@@ -187,8 +180,8 @@ for repo in repositories:
         f = open(passwordFile, "r")
         password = f.read().strip()
         f.close()
-    putTiddlers(repo)
-    getTiddlers(repo)
+    repo.putTiddlers()
+    repo.getTiddlers()
 
 config.set("general", "lastRun", now)
 
