@@ -64,10 +64,31 @@ class otwRepository:
         createFolder(self.localFolder)
         createFolder(self.repoMetadataFolder)
         os.chdir(self.localFolder)
+        self.url = config.get(self.name, 'url')
+        self.selftestMode = config.get(self.name, 'testMode')
+        authentication = config.getboolean(self.name, "authentication")
+        self.user = ""
+        self.password = ""
+
+        if authentication:
+            self.user = config.get(self.name, "user")
+            passwordFile = re.sub(r'(~)', os.getenv("HOME"),
+                                  config.get(self.name, "passwordFile"))
+            f = open(passwordFile, "r")
+            self.password = f.read().strip()
+            f.close()
         print "===== Syncing " + self.name + " to " + self.localFolder
 
     def getName(self):
         return self.name
+
+    def writeMetadata(self, tiddler):
+        """Calculate text sha1 and store metadata"""
+        tiddler["sha1"] = hashlib.sha1(tiddler["text"]
+                                       .encode('utf8')).hexdigest()
+        f = open(os.path.join(self.repoMetadataFolder, tiddler["title"]), 'w')
+        f.write(json.dumps(tiddler))
+        f.close
 
     def getTiddlerByName(self, title):
         print "Downloading "+title
@@ -81,18 +102,14 @@ class otwRepository:
         f = open(title+".txt", 'w')
         f.write(tiddler["text"].encode('utf8'))
         f.close()
-        tiddler["sha1"] = hashlib.sha1(tiddler["text"]
-                                       .encode('utf8')).hexdigest()
+
         # get the date of the lastest tiddler
         if tiddler["modified"] > self.lastModification:
             self.lastModification = tiddler["modified"]
             config.set(repo, 'lastModification', self.lastModification)
-            f = open(os.path.join(self.repoMetadataFolder, title), 'w')
-            f.write(json.dumps(tiddler))
-            f.close
-        # Writing our configuration file
+            self.writeMetadata(tiddler)
 
-    def getTiddlers(self):
+    def getNodifiedTiddlers(self):
         print "lastest tiddler modification date = ", self.lastModification
         r = requests.get(url + "/tiddlers.json?select=modified:>"
                          + str(self.lastModification),
@@ -103,7 +120,18 @@ class otwRepository:
             title = tiddler["title"]
             self.getTiddlerByName(title)
 
-    def putTiddlers(self):
+    def putTiddler(self, tiddler):
+        headers = {'content-type': 'application/json'}
+        title = tiddler["title"]
+        data = json.dumps({'text': tiddler['text'],
+                          'tags': tiddler['tags']})
+        print "Uploading " + encodeURL(url, title)
+        r = requests.put(encodeURL(url, title), data,
+                         auth=(user, password), headers=headers)
+        self.writeMetadata(tiddler)
+        print r.content
+
+    def putModifiedTiddlers(self):
         try:
             lastRun = config.getint("general", "lastRun")
         except:
@@ -113,7 +141,6 @@ class otwRepository:
             lastRun = 0
         updatedFiles = modifiedFiles(self.localFolder, lastRun)
         updatedTiddlers = []
-        headers = {'content-type': 'application/json'}
         print len(updatedFiles), " file(s) have been modified on disk"
         for file in updatedFiles:
             title = re.sub(r'(.txt$)', '', file)
@@ -135,13 +162,8 @@ class otwRepository:
                     updatedTiddlers.append(tiddler)
         print len(updatedTiddlers), " tiddler(s) have real changes on disk"
         for tiddle in updatedTiddlers:
-            title = tiddle["title"]
-            data = json.dumps({'text': tiddle['text'],
-                               'tags': tiddle['tags']})
-            print "Uploading " + encodeURL(url, title)
-            r = requests.put(encodeURL(url, title), data,
-                             auth=(user, password), headers=headers)
-            print r.content
+            self.putTiddler(tiddler)
+
 
 config_file = os.path.join(os.getenv("HOME"), '.offlinetw.rc')
 config = ConfigParser.ConfigParser()
@@ -166,22 +188,8 @@ now = int(time.strftime('%Y%m%d%H%M%S', time.localtime()))
 
 for repoName in repositories:
     repo = otwRepository(config, repoName)
-    url = config.get(repo, 'url')
-    testMode = config.get(repo, 'testMode')
-
-    authentication = config.getboolean(repo.getName(), "authentication")
-    user = ""
-    password = ""
-
-    if authentication:
-        user = config.get(repo, "user")
-        passwordFile = re.sub(r'(~)', os.getenv("HOME"),
-                              config.get(repo, "passwordFile"))
-        f = open(passwordFile, "r")
-        password = f.read().strip()
-        f.close()
-    repo.putTiddlers()
-    repo.getTiddlers()
+    repo.putModifiedTiddlers()
+    repo.getModifiedTiddlers()
 
 config.set("general", "lastRun", now)
 
