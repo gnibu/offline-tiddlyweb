@@ -65,7 +65,7 @@ class otwRepository:
         createFolder(self.repoMetadataFolder)
         os.chdir(self.localFolder)
         self.url = config.get(self.name, 'url')
-        self.selftestMode = config.get(self.name, 'testMode')
+        self.testMode = config.get(self.name, 'testMode')
         authentication = config.getboolean(self.name, "authentication")
         self.user = ""
         self.password = ""
@@ -92,28 +92,30 @@ class otwRepository:
 
     def getTiddlerByName(self, title):
         print "Downloading "+title
-        tiddlerURL = encodeURL(url, title)+".json"
-        r = requests.get(tiddlerURL, auth=(user, password))
+        tiddlerURL = encodeURL(self.url, title)+".json"
+        r = requests.get(tiddlerURL, auth=(self.user, self.password))
         try:
             tiddler = json.loads(r.content)
         except:
             print r.content
             exit(1)
         f = open(title+".txt", 'w')
+        tiddler["text"] += "\n"
         f.write(tiddler["text"].encode('utf8'))
         f.close()
+        self.writeMetadata(tiddler)
 
         # get the date of the lastest tiddler
         if tiddler["modified"] > self.lastModification:
             self.lastModification = tiddler["modified"]
-            config.set(repo, 'lastModification', self.lastModification)
-            self.writeMetadata(tiddler)
+            self.config.set(self.name, 'lastModification',
+                            self.lastModification)
 
-    def getNodifiedTiddlers(self):
+    def getModifiedTiddlers(self):
         print "lastest tiddler modification date = ", self.lastModification
-        r = requests.get(url + "/tiddlers.json?select=modified:>"
+        r = requests.get(self.url + "/tiddlers.json?select=modified:>"
                          + str(self.lastModification),
-                         auth=(user, password))
+                         auth=(self.user, self.password))
         tiddlers = json.loads(r.content)
         print len(tiddlers), " tiddler(s) to download"
         for tiddler in tiddlers:
@@ -125,9 +127,9 @@ class otwRepository:
         title = tiddler["title"]
         data = json.dumps({'text': tiddler['text'],
                           'tags': tiddler['tags']})
-        print "Uploading " + encodeURL(url, title)
-        r = requests.put(encodeURL(url, title), data,
-                         auth=(user, password), headers=headers)
+        print "Uploading " + encodeURL(self.url,  tiddler['title'])
+        r = requests.put(encodeURL(self.url, title), data,
+                         auth=(self.user, self.password), headers=headers)
         self.writeMetadata(tiddler)
         print r.content
 
@@ -157,11 +159,13 @@ class otwRepository:
             f.close()
             # Upload only only if the actual content of the file has changed
             if hashlib.sha1(filecontent).hexdigest() != tiddler["sha1"]:
-                if not testMode or (title == "test") or (title == "test2"):
+                if not self.testMode or (title == "test") \
+                   or (title == "sigfox") or (title == "test2"):
                     tiddler['text'] = filecontent
+                    tiddler['title'] = title
                     updatedTiddlers.append(tiddler)
         print len(updatedTiddlers), " tiddler(s) have real changes on disk"
-        for tiddle in updatedTiddlers:
+        for tiddler in updatedTiddlers:
             self.putTiddler(tiddler)
 
 
