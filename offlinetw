@@ -10,6 +10,7 @@ import requests
 import json
 import hashlib
 import urllib
+import os.path
 
 ###################
 # Utility functions
@@ -100,8 +101,19 @@ class otwRepository:
             print r.content
             exit(1)
         tiddler["text"] += "\n"
-        # FIXME check sha1 from metadata
-        if hashlib.sha1(tiddler["text"]).hexdigest() != tiddler["sha1"]:
+        tiddler["sha1"] = 0
+
+        # check metadata
+        metadataFile = os.path.join(self.repoMetadataFolder, title)
+        if os.path.isfile(metadataFile):
+            f = open(metadataFile, "r")
+            tid = json.loads(f.read())
+            tiddler["sha1"] = tid["sha1"]
+            f.close()
+
+        # change the file on disk only if the content has changed
+        if hashlib.sha1(tiddler["text"]
+                  .encode('utf8')).hexdigest() != tiddler["sha1"]:
             f = open(title+".txt", 'w')
             f.write(tiddler["text"].encode('utf8'))
             f.close()
