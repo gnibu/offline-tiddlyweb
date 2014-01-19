@@ -11,6 +11,10 @@ import json
 import hashlib
 import urllib
 import os.path
+from tendo import singleton
+
+# will sys.exit(-1) if other instance is running
+me = singleton.SingleInstance()
 
 ###################
 # Utility functions
@@ -66,7 +70,7 @@ class otwRepository:
         createFolder(self.repoMetadataFolder)
         os.chdir(self.localFolder)
         self.url = config.get(self.name, 'url')
-        self.testMode = config.get(self.name, 'testMode')
+        self.testMode = config.getboolean(self.name, 'testMode')
         authentication = config.getboolean(self.name, "authentication")
         self.user = ""
         self.password = ""
@@ -117,6 +121,8 @@ class otwRepository:
             f = open(title+".txt", 'w')
             f.write(tiddler["text"].encode('utf8'))
             f.close()
+        else:
+            print("Don't write content on disk since the content is the same")
         self.writeMetadata(tiddler)
 
         # get the date of the lastest tiddler
@@ -175,7 +181,7 @@ class otwRepository:
             f.close()
             # Upload only only if the actual content of the file has changed
             if hashlib.sha1(filecontent).hexdigest() != tiddler["sha1"]:
-                if not self.testMode or (title == "test") \
+                if (not self.testMode) or (title == "test") \
                    or (title == "sigfox") or (title == "test2"):
                     tiddler['text'] = filecontent
                     tiddler['title'] = title
@@ -216,7 +222,8 @@ for repoName in repositories:
     if repo.putModifiedTiddlers() is False:
         repo.getModifiedTiddlers()
     else:
-        time.sleep(10)
+        print("Sleep to avoid overwriting local changes")
+        time.sleep(120)
 
 config.set("general", "lastRun", now)
 
