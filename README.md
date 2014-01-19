@@ -9,6 +9,8 @@ The authentication is mandatory.
 
 Files created in the local dir are not created on the server at the moment.
 
+Known bug: there is a possible race condition if a file is writen externaly right after the sha1 is calculated
+
 Here is a sample config file
 
 ```
