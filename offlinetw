@@ -223,7 +223,7 @@ for repoName in repositories:
         repo.getModifiedTiddlers()
     else:
         print("Sleep to avoid overwriting local changes")
-        time.sleep(120)
+        time.sleep(240)
 
 config.set("general", "lastRun", now)
 
